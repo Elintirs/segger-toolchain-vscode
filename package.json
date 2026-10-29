@@ -76,6 +76,11 @@
         "category": "SEGGER"
       },
       {
+        "command": "segger.debugConfig",
+        "title": "Generate J-Link debug configuration",
+        "category": "SEGGER"
+      },
+      {
         "command": "segger.selectStudio",
         "title": "Select SEGGER Embedded Studio installation",
         "category": "SEGGER"
@@ -128,6 +133,11 @@
           "type": "string",
           "default": "",
           "description": "Path to JLink.exe. Leave empty for auto-detection."
+        },
+        "segger.gdbPath": {
+          "type": "string",
+          "default": "",
+          "description": "Path to the GDB used by cortex-debug (arm-none-eabi-gdb). Leave empty to use PATH or the SEGGER toolchain."
         },
         "segger.stackSize": {
           "type": "number",

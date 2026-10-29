@@ -1,4 +1,5 @@
 import * as fs from "fs";
+import * as path from "path";
 
 export interface MemoryRegion {
     name: string;
@@ -201,8 +202,21 @@ export function prepareIcf(template: string, flashOrigin: number): string {
     ];
 }
 
-/** Find the first file matching a name pattern below one of the given roots. */
-export function findFileUnder(roots: string[], pattern: RegExp, maxDepth = 6): string | undefined {
+/**
+ * Guess the J-Link device name from a CubeMX-style linker script name:
+ * STM32F072CBTX_FLASH.ld -> STM32F072CB, STM32F407VGTX_FLASH.ld -> STM32F407VG.
+ */
+export function detectDeviceName(linkerScript: string): string | undefined {
+    const base = path.basename(linkerScript).replace(/\.ld$/i, "");
+    const m = /^(STM32[A-Z0-9]*?)(?:TX|HX|XX)?(?:_|$)/i.exec(base);
+    if (!m) {
+        return undefined;
+    }
+    const name = m[1].toUpperCase();
+    return /^STM32[A-Z]\d{3}/.test(name) ? name : undefined;
+}
+
+/** Find the first file matching a name pattern below one of the given roots. */export function findFileUnder(roots: string[], pattern: RegExp, maxDepth = 6): string | undefined {
     const fsMod = fs;
     const visit = (dir: string, depth: number): string | undefined => {
         if (depth > maxDepth) {

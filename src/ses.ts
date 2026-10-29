@@ -2,7 +2,7 @@ import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
 import * as vscode from "vscode";
-import { firstExisting, isDir, isFile, walk } from "./util";
+import { firstExisting, isDir, isFile, run, walk } from "./util";
 
 export interface SesInstall {
     /** Root of the SEGGER Embedded Studio installation (the folder that contains bin/). */
@@ -231,4 +231,29 @@ export async function resolveSes(interactive: boolean): Promise<SesInstall | und
 
 export function describeSes(s: SesInstall): string {
     return `SES ${s.version} (${s.root})`;
+}
+
+export interface LicenseStatus {
+    /** false only when emLicense is present and reports no installed license. */
+    ok: boolean;
+    detail: string;
+}
+
+/** Check whether a command-line license is installed via emLicense. */
+export async function checkLicense(s: SesInstall): Promise<LicenseStatus> {
+    const tool = firstExisting([
+        path.join(s.root, "bin", "emLicense.exe"),
+        path.join(s.root, "bin", "emLicense"),
+    ]);
+    if (!tool) {
+        return { ok: true, detail: "emLicense not found, skipping license check" };
+    }
+    const result = await run(tool, ["list"]);
+    const text = (result.stdout + result.stderr).trim();
+    if (result.code !== 0) {
+        return { ok: true, detail: `emLicense exited with ${result.code}` };
+    }
+    return text.length > 0
+        ? { ok: true, detail: text.split(/\r?\n/)[0] }
+        : { ok: false, detail: "No license installed: the command-line compiler will fail with 'no active license found'." };
 }

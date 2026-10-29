@@ -4,6 +4,7 @@ import * as vscode from "vscode";
 import {
     buildSeggerStartup,
     detectCpuFlags,
+    detectDeviceName,
     extractIrqHandlers,
     findFileUnder,
     MemoryRegion,
@@ -34,6 +35,7 @@ export interface ConvertResult {
     regions: MemoryRegion[];
     irqCount: number;
     startupFile: string;
+    device?: string;
 }
 
 interface PresetsLike {
@@ -162,7 +164,11 @@ export async function convertProject(opts: ConvertOptions, output: vscode.Output
     if (regions.length < 2) {
         throw new Error(`Could not parse the MEMORY block of ${ldFile}`);
     }
+    const device = detectDeviceName(ldFile);
     changes.push(`Linker script: ${path.relative(projectDir, ldFile)} -> segger/SEGGER_Flash.icf`);
+    if (device) {
+        changes.push(`Detected J-Link device: ${device}`);
+    }
 
     // --- CMSIS startup -> interrupt vector names ----------------------------
     const startupBlock = setBlock(original, "STARTUP_FILE");
@@ -323,7 +329,7 @@ export async function convertProject(opts: ConvertOptions, output: vscode.Output
         stackSize: opts.stackSize,
         heapSize: opts.heapSize,
         presetName: opts.presetName,
-        deviceName: opts.deviceName,
+        deviceName: device ?? opts.deviceName,
     });
     await writeWorkspaceSettings(projectDir, opts.presetName);
     changes.push(`Created ${path.basename(preset.userPresetsFile)} (${opts.presetName})`);
@@ -339,5 +345,6 @@ export async function convertProject(opts: ConvertOptions, output: vscode.Output
         regions,
         irqCount: irqHandlers.length,
         startupFile: path.join(seggerDir, "SEGGER_Startup.S"),
+        device,
     };
 }

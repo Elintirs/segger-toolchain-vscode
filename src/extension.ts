@@ -2,10 +2,11 @@ import * as fs from "fs";
 import * as path from "path";
 import * as vscode from "vscode";
 import { buildPreset, findBuiltElf } from "./build";
+import { findGdb, openDebugConfig, writeDebugConfig } from "./debug";
 import { flash } from "./flash";
 import { findGccPreset, readPresetBinaryDir, userPresetsPath } from "./presets";
 import { convertProject, ConvertResult } from "./project";
-import { describeSes, findSesInstallations, pickSes, resolveSes, SesInstall } from "./ses";
+import { checkLicense, describeSes, findSesInstallations, pickSes, resolveSes, SesInstall } from "./ses";
 import { formatBytes, measureSize, renderComparePanel } from "./size";
 import { ensureToolchainPackage } from "./toolchainPkg";
 import { readJsoncFile, workspaceFolder } from "./util";
@@ -35,10 +36,13 @@ export function activate(context: vscode.ExtensionContext): void {
     register("segger.compare", () => runSafely(compareSizes));
     register("segger.clean", () => runSafely(cleanBuilds));
     register("segger.flash", () => runSafely(flashTarget));
+    register("segger.debugConfig", () => runSafely(generateDebugConfig));
     register("segger.selectStudio", () => runSafely(selectStudio));
     register("segger.updatePackage", () => runSafely(updatePackage));
     register("segger.showInfo", () => runSafely(showInfo));
 
+    lastSize = context.workspaceState.get<number>(`lastSize.${getPresetName()}`);
+    lastElf = context.workspaceState.get<string>("lastElf");
     void refreshStatus();
 }
 
@@ -97,11 +101,15 @@ async function refreshStatus(): Promise<void> {
     } else {
         const sizeText = lastSize !== undefined ? ` · ${lastSize} B` : "";
         status.text = `$(chip) SEGGER${sizeText}`;
+        const previous = extensionContext.workspaceState.get<number>(`lastSize.${presetName}`);
         status.tooltip = [
             `Preset: ${presetName}`,
             activeSes ? describeSes(activeSes) : "SEGGER Embedded Studio not found",
+            previous !== undefined ? `Previous build: ${previous} B` : "",
             "Click to build",
-        ].join("\n");
+        ]
+            .filter(Boolean)
+            .join("\n");
         status.command = "segger.build";
     }
     status.show();
@@ -154,6 +162,24 @@ async function setupProject(): Promise<void> {
         output.appendLine("bin/cc-segger.exe not found (SES < 8.24?). Falling back to bin/cc.exe.");
     }
 
+    const license = await checkLicense(ses);
+    if (!license.ok) {
+        output.appendLine(`License check: ${license.detail}`);
+        const action = await vscode.window.showWarningMessage(
+            "SEGGER Embedded Studio is installed, but no command-line license is activated. The build will fail with 'no active license found'.",
+            "Get a free key",
+            "Continue anyway",
+        );
+        if (action === "Get a free key") {
+            void vscode.env.openExternal(
+                vscode.Uri.parse("https://www.segger.com/purchase/licensing/license-request/"),
+            );
+            return;
+        }
+    } else {
+        output.appendLine(`License check: ${license.detail}`);
+    }
+
     const result = await vscode.window.withProgress(
         {
             location: vscode.ProgressLocation.Notification,
@@ -181,6 +207,13 @@ async function setupProject(): Promise<void> {
     );
 
     logConvertResult(result);
+
+    const currentDevice = cfg.get<string>("deviceName", "");
+    if (result.device && (!currentDevice || currentDevice === "STM32F072CB")) {
+        await cfg.update("deviceName", result.device, vscode.ConfigurationTarget.Workspace);
+        output.appendLine(`J-Link device name set to ${result.device}`);
+    }
+
     await refreshStatus();
 
     const summary = [
@@ -230,10 +263,22 @@ async function buildWith(presetName: string): Promise<void> {
     lastElf = outcome.elf;
     const size = outcome.elf ? await measureSize(outcome.elf, activeSes?.size) : undefined;
     lastSize = size?.flash;
+    const sizeKey = `lastSize.${presetName}`;
+    const previousSize = extensionContext.workspaceState.get<number>(sizeKey);
+    if (size) {
+        await extensionContext.workspaceState.update(sizeKey, size.flash);
+    }
+    if (outcome.elf) {
+        await extensionContext.workspaceState.update("lastElf", outcome.elf);
+    }
     await refreshStatus();
     const sizeText = size ? ` · ${formatBytes(size.flash)} flash` : "";
+    const deltaText =
+        size && previousSize !== undefined && previousSize !== size.flash
+            ? ` (${size.flash > previousSize ? "+" : ""}${size.flash - previousSize} B к прошлой сборке)`
+            : "";
     const action = await vscode.window.showInformationMessage(
-        `Build succeeded in ${outcome.seconds.toFixed(1)} s${sizeText}`,
+        `Build succeeded in ${outcome.seconds.toFixed(1)} s${sizeText}${deltaText}`,
         "Flash",
         "Show output",
     );
@@ -399,8 +444,43 @@ async function flashTarget(): Promise<void> {
     }
 }
 
-async function selectStudio(): Promise<void> {
-    const found = findSesInstallations();
+async function generateDebugConfig(): Promise<void> {
+    const projectDir = getProjectDir();
+    if (!projectDir) {
+        return;
+    }
+    const cfg = vscode.workspace.getConfiguration("segger");
+    const presetName = getPresetName();
+    const elf = lastElf ?? (await findBuiltElf(projectDir, presetName));
+    const ses = findSesInstallations(cfg.get<string>("studioPath", "") || undefined)[0];
+    const gdb = findGdb(cfg.get<string>("gdbPath", ""), ses?.root);
+    if (!gdb) {
+        const action = await vscode.window.showWarningMessage(
+            "arm-none-eabi-gdb was not found. cortex-debug needs a GDB: install the Arm GNU Toolchain or set segger.gdbPath.",
+            "Open download page",
+        );
+        if (action === "Open download page") {
+            void vscode.env.openExternal(
+                vscode.Uri.parse("https://developer.arm.com/downloads/-/arm-gnu-toolchain-downloads"),
+            );
+        }
+        return;
+    }
+    const file = await writeDebugConfig({
+        projectDir,
+        elf: elf ?? path.join(projectDir, "build", presetName, "firmware.elf"),
+        device: cfg.get<string>("deviceName", "") || "STM32F072CB",
+        interfaceName: cfg.get<string>("flashInterface", "SWD"),
+        gdbPath: gdb,
+        jlinkPath: cfg.get<string>("jlinkPath", ""),
+    });
+    await openDebugConfig(file);
+    void vscode.window.showInformationMessage(
+        "Created .vscode/launch.json (SEGGER: J-Link). Install the cortex-debug extension to start debugging with F5.",
+    );
+}
+
+async function selectStudio(): Promise<void> {    const found = findSesInstallations();
     let install: SesInstall | undefined;
     if (found.length > 0) {
         install = await pickSes(found);
@@ -435,6 +515,7 @@ async function showInfo(): Promise<void> {
     const projectDir = getProjectDir();
     const cfg = vscode.workspace.getConfiguration("segger");
     const installs = findSesInstallations(cfg.get<string>("studioPath", "") || undefined);
+    const license = installs[0] ? await checkLicense(installs[0]) : undefined;
     const lines = [
         "SEGGER Toolchain",
         `Project: ${projectDir ?? "-"}`,
@@ -443,6 +524,7 @@ async function showInfo(): Promise<void> {
         `Compiler: ${installs[0]?.cc ?? "-"}`,
         `cc-segger: ${installs[0]?.ccSegger ?? "-"}`,
         `Binutils: ${installs[0]?.binutilsDir ?? "-"}`,
+        `CLI license: ${license ? (license.ok ? "ok" : `NOT INSTALLED (${license.detail})`) : "-"}`,
         `GCC preset: ${(projectDir && findGccPreset(projectDir)) || cfg.get<string>("gccPreset", "") || "-"}`,
         `Last ELF: ${lastElf ?? "-"}`,
         `Last flash size: ${lastSize !== undefined ? lastSize + " B" : "-"}`,

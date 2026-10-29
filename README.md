@@ -30,6 +30,8 @@ SEGGER Compiler даёт заметно меньший код, чем `arm-none-
 - **Не ломает GCC-сборку**: изменения обёрнуты в `if(CMAKE_TOOLCHAIN_FILE MATCHES "segger-toolchain")`, исходные строки сохранены в ветке `else()`.
 - **Собирает** через `cmake --preset` / `cmake --build --preset`.
 - **Сравнивает размер прошивки** SEGGER и GCC в отдельной панели.
+- **Помнит предыдущий размер** и показывает разницу к прошлой сборке.
+- **Генерирует `launch.json`** для отладки через cortex-debug + J-Link.
 - **Прошивает через J-Link** (`JLink.exe -CommanderScript`).
 - Показывает размер прошивки в статус-баре.
 
@@ -44,6 +46,14 @@ SEGGER Compiler даёт заметно меньший код, чем `arm-none-
 | J-Link Software | опционально | только для прошивки |
 
 Расширение **не содержит** бинарников SEGGER и не обходит лицензию: компилятор берётся из вашей установки Embedded Studio.
+
+> **Важно:** «Accept» в диалоге Non-Commercial License включает только IDE. Командной строке нужен ключ, установленный через `emLicense`. Бесплатный ключ SFL запрашивается на [segger.com/purchase/licensing/license-request](https://www.segger.com/purchase/licensing/license-request/), затем:
+>
+> ```powershell
+> "<SES>\bin\emLicense.exe" install "<ключ>"
+> ```
+>
+> Setup проверяет `emLicense list` и предупредит, если ключа нет.
 
 ## Установка
 
@@ -86,6 +96,16 @@ code --install-extension segger-toolchain-0.1.1.vsix
 
 После сборки размер прошивки показывается в статус-баре, а сравнение с GCC
 открывается отдельной панелью.
+
+### Отладка
+
+1. `Ctrl+Shift+P` → **SEGGER: Generate J-Link debug configuration**.
+2. Установите расширение [cortex-debug](https://marketplace.visualstudio.com/items?itemName=marus25.cortex-debug) (VS Code предложит это сам через `.vscode/extensions.json`).
+3. `F5` → **SEGGER: J-Link**.
+
+Команда создаёт `.vscode/launch.json` и берёт устройство из `segger.deviceName`
+(при Setup оно определяется по имени linker script, например `STM32F072CBTX_FLASH.ld` → `STM32F072CB`).
+Для отладки нужен `arm-none-eabi-gdb`: из PATH или `segger.gdbPath`.
 
 ## Что именно меняется в проекте
 
@@ -147,6 +167,7 @@ Generic startup от SEGGER содержит только ядровые иск�
 | `segger.presetName` | `segger-debug` | имя пресета |
 | `segger.gccPreset` | авто | пресет GCC для сравнения |
 | `segger.jlinkPath` | авто | путь к `JLink.exe` |
+| `segger.gdbPath` | авто | `arm-none-eabi-gdb` для cortex-debug |
 | `segger.stackSize` | `1024` | стек, байт |
 | `segger.heapSize` | `0` | куча, байт |
 | `segger.flashInterface` | `SWD` | SWD/JTAG |
@@ -157,6 +178,7 @@ Generic startup от SEGGER содержит только ядровые иск�
 | Симптом | Причина и что делать |
 |---|---|
 | `No binutils found ... /gcc/` | В установке SES нет каталога `gcc/arm-*`. Проверьте `segger.studioPath`, он должен указывать на папку с `bin/cc.exe`. |
+| `error: no active license found` | IDE лицензирована, а CLI — нет. Запросите бесплатный ключ SFL и установите: `<SES>\bin\emLicense.exe install "<ключ>"`. Проверка: `emLicense.exe list`. |
 | `undefined symbol __stack_end__` | Другая версия SEGGER Linker. Добавьте в пресет `-DCMAKE_EXE_LINKER_FLAGS=-Wl,--defsym=__stack_end__=<адрес конца RAM>`. |
 | В логе видно `--specs=nano.specs` | Сборка идёт по GCC-ветке: не запускался Setup или проект не был сконвертирован. |
 | `--add-region` не распознан | Линковщик не SEGGER. Убедитесь, что в пресете указан `cmake/segger/segger-toolchain.cmake`, а не GCC toolchain. |

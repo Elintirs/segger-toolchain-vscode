@@ -57,7 +57,11 @@ async function main() {
 
     await test("extension activates", async () => {
         const ext = require(path.join(out, "extension.js"));
-        ext.activate({ subscriptions: [], globalStorageUri: { fsPath: path.join(os.tmpdir(), "segger-activate") } });
+        ext.activate({
+            subscriptions: [],
+            globalStorageUri: { fsPath: path.join(os.tmpdir(), "segger-activate") },
+            workspaceState: { get: () => undefined, update: async () => {} },
+        });
         ext.deactivate();
     });
 
@@ -106,6 +110,13 @@ async function main() {
         assert.ok(stm32.includes("place in FLASH"));
         const kinetis = devices.prepareIcf(tpl, 0);
         assert.ok(kinetis.includes("place at 0x400"), "NXP config must be kept for flash at 0");
+    });
+
+    await test("detect the J-Link device name from the linker script", () => {
+        assert.strictEqual(devices.detectDeviceName("C:/p/linker/STM32F072CBTX_FLASH.ld"), "STM32F072CB");
+        assert.strictEqual(devices.detectDeviceName("STM32F407VGTX_FLASH.ld"), "STM32F407VG");
+        assert.strictEqual(devices.detectDeviceName("STM32F103C8TX_FLASH.ld"), "STM32F103C8");
+        assert.strictEqual(devices.detectDeviceName("custom.ld"), undefined);
     });
 
     await test("parse size output", () => {        const s = size.parseSizeOutput("   text\t   data\t    bss\t    dec\t    hex\tfilename\n   972\t      4\t     16\t    992\t    3e0\tfirmware.elf\n");
@@ -230,8 +241,7 @@ async function main() {
         assert.ok(icf.includes("place at start of FLASH"));
     });
 
-    await test("conversion is all-or-nothing", async () => {
-        const bad = path.join(tmp, "badproj");
+    await test("conversion is all-or-nothing", async () => {        const bad = path.join(tmp, "badproj");
         fs.mkdirSync(bad, { recursive: true });
         const cm = fs
             .readFileSync(path.join(example, "CMakeLists.txt"), "utf8")
@@ -284,6 +294,26 @@ async function main() {
             1,
             "duplicate managed blocks",
         );
+    });
+
+    await test("generate a cortex-debug launch configuration", async () => {
+        const debug = require(path.join(out, "debug"));
+        const file = await debug.writeDebugConfig({
+            projectDir: work,
+            elf: path.join(work, "build", "segger-debug", "firmware.elf"),
+            device: "STM32F072CB",
+            interfaceName: "SWD",
+            gdbPath: "C:/tools/arm-none-eabi-gdb.exe",
+        });
+        const data = JSON.parse(fs.readFileSync(file, "utf8"));
+        const config = data.configurations.find((c) => c.name === "SEGGER: J-Link");
+        assert.ok(config, "launch configuration missing");
+        assert.strictEqual(config.device, "STM32F072CB");
+        assert.strictEqual(config.interface, "swd");
+        assert.ok(String(config.serverpath).endsWith("JLinkGDBServerCL.exe"));
+        assert.strictEqual(config.gdbPath, "C:/tools/arm-none-eabi-gdb.exe");
+        const ext = JSON.parse(fs.readFileSync(path.join(work, ".vscode", "extensions.json"), "utf8"));
+        assert.ok(ext.recommendations.includes("marus25.cortex-debug"));
     });
 
     console.log(`\n${passed} passed, ${failed} failed`);
