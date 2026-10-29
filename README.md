@@ -47,15 +47,29 @@ SEGGER Compiler даёт заметно меньший код, чем `arm-none-
 
 ## Установка
 
+### Из готового `.vsix` (рекомендуется)
+
+1. Скачайте `segger-toolchain-0.1.0.vsix` из [Releases](https://github.com/Elintirs/segger-toolchain-vscode/releases).
+2. Установите:
+
 ```powershell
-cd C:\Users\elimi\Documents\segger-vscode
-npm install
+code --install-extension segger-toolchain-0.1.0.vsix
+```
+
+3. Перезапустите VS Code. В списке расширений появится **SEGGER Toolchain (SES) for CMake** (`elintirs.segger-toolchain`).
+
+### Из исходников
+
+```powershell
+git clone https://github.com/Elintirs/segger-toolchain-vscode.git
+cd segger-toolchain-vscode
+npm ci
 npm run compile
 npx @vscode/vsce package
 code --install-extension segger-toolchain-0.1.0.vsix
 ```
 
-Для разработки: откройте папку в VS Code и нажмите `F5` (Extension Development Host).
+Для разработки: откройте папку в VS Code и нажмите `F5` — запустится Extension Development Host.
 
 ## Быстрый старт
 

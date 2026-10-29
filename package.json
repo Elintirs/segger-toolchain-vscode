@@ -3,11 +3,29 @@
   "displayName": "SEGGER Toolchain (SES) for CMake",
   "description": "Build STM32 (and other Cortex-M) projects in VS Code with the SEGGER compiler from SEGGER Embedded Studio, using CMake + Ninja. Includes project conversion, size comparison against GCC, and J-Link flashing.",
   "version": "0.1.0",
-  "publisher": "local",
+  "publisher": "elintirs",
   "license": "MIT",
+  "icon": "media/icon.png",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Elintirs/segger-toolchain-vscode.git"
+  },
+  "bugs": {
+    "url": "https://github.com/Elintirs/segger-toolchain-vscode/issues"
+  },
+  "homepage": "https://github.com/Elintirs/segger-toolchain-vscode#readme",
   "engines": {
     "vscode": "^1.85.0"
   },
+  "capabilities": {
+    "untrustedWorkspaces": {
+      "supported": false,
+      "description": "The extension runs the compiler and flashes hardware, which is not safe in an untrusted workspace."
+    }
+  },
+  "extensionKind": [
+    "workspace"
+  ],
   "categories": [
     "Programming Languages",
     "Other"

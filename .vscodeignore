@@ -7,3 +7,5 @@ tsconfig.json
 **/*.ts
 .gitignore
 .cache-test/**
+.vscode/**
+.github/**
