@@ -3,8 +3,10 @@ import * as path from "path";
 import * as vscode from "vscode";
 import { buildPreset, findBuiltElf } from "./build";
 import { findGdb, openDebugConfig, writeDebugConfig } from "./debug";
+import { runEmBuild } from "./embuild";
 import { flash } from "./flash";
 import { findGccPreset, readPresetBinaryDir, userPresetsPath } from "./presets";
+import { collectProjectInfo } from "./projectInfo";
 import { convertProject, ConvertResult } from "./project";
 import { checkLicense, describeSes, findSesInstallations, pickSes, resolveSes, SesInstall } from "./ses";
 import { formatBytes, measureSize, renderComparePanel } from "./size";
@@ -32,6 +34,7 @@ export function activate(context: vscode.ExtensionContext): void {
 
     register("segger.setup", () => runSafely(setupProject));
     register("segger.build", () => runSafely(() => buildWith(getPresetName())));
+    register("segger.buildEm", () => runSafely(() => buildWithEmBuild()));
     register("segger.buildGcc", () => runSafely(buildWithGcc));
     register("segger.compare", () => runSafely(compareSizes));
     register("segger.clean", () => runSafely(cleanBuilds));
@@ -104,6 +107,7 @@ async function refreshStatus(): Promise<void> {
         const previous = extensionContext.workspaceState.get<number>(`lastSize.${presetName}`);
         status.tooltip = [
             `Preset: ${presetName}`,
+            `Backend: ${getBackend() === "embuild" ? "emBuild (SFL)" : "CMake + cc.exe"}`,
             activeSes ? describeSes(activeSes) : "SEGGER Embedded Studio not found",
             previous !== undefined ? `Previous build: ${previous} B` : "",
             "Click to build",
@@ -200,6 +204,10 @@ async function setupProject(): Promise<void> {
                     stackSize: cfg.get<number>("stackSize", 1024),
                     heapSize: cfg.get<number>("heapSize", 0),
                     presetName: getPresetName(),
+                    extraCFlags: cfg.get<string>("extraCFlags", ""),
+                    extraLinkFlags: cfg.get<string>("extraLinkFlags", ""),
+                    extraDefines: cfg.get<string[]>("extraDefines", []),
+                    extraIncludes: cfg.get<string[]>("extraIncludes", []),
                 },
                 output,
             );
@@ -242,18 +250,56 @@ function logConvertResult(result: ConvertResult): void {
     output.appendLine("");
 }
 
+function getBackend(): "cmake" | "embuild" {
+    return vscode.workspace.getConfiguration("segger").get<string>("buildBackend", "cmake") === "embuild"
+        ? "embuild"
+        : "cmake";
+}
+
+/** Build the SEGGER side with the configured backend. */
+async function buildSeggerOnce(
+    projectDir: string,
+    presetName: string,
+    token?: vscode.CancellationToken,
+): Promise<{ ok: boolean; elf?: string; seconds: number }> {
+    if (getBackend() === "embuild") {
+        const cfg = vscode.workspace.getConfiguration("segger");
+        const ses = activeSes ?? findSesInstallations(cfg.get<string>("studioPath", "") || undefined)[0];
+        if (!ses) {
+            throw new Error("SEGGER Embedded Studio not found. Set segger.studioPath or run Setup.");
+        }
+        return runEmBuild(
+            {
+                projectDir,
+                info: collectProjectInfo(projectDir),
+                sesRoot: ses.root,
+                name: path.basename(projectDir).replace(/[^\w.-]+/g, "_"),
+                optimization: cfg.get<"none" | "balanced" | "size">("optimization", "balanced"),
+                stackSize: cfg.get<number>("stackSize", 1024),
+                heapSize: cfg.get<number>("heapSize", 0),
+                extraDefines: cfg.get<string[]>("extraDefines", []),
+                extraIncludes: cfg.get<string[]>("extraIncludes", []),
+            },
+            output,
+            token,
+        );
+    }
+    return buildPreset(projectDir, presetName, output, token);
+}
+
 async function buildWith(presetName: string): Promise<void> {
     const project = await requireConfigured();
     if (!project) {
         return;
     }
+    const backend = getBackend();
     const outcome = await vscode.window.withProgress(
         {
             location: vscode.ProgressLocation.Notification,
-            title: `Building with SEGGER (${presetName})`,
+            title: `Building with SEGGER (${backend === "embuild" ? "emBuild" : presetName})`,
             cancellable: true,
         },
-        (_progress, token) => buildPreset(project.projectDir, presetName, output, token),
+        (_progress, token) => buildSeggerOnce(project.projectDir, presetName, token),
     );
     if (!outcome.ok) {
         void vscode.window.showErrorMessage("Build failed. See the 'SEGGER Toolchain' output for details.");
@@ -287,6 +333,45 @@ async function buildWith(presetName: string): Promise<void> {
     } else if (action === "Show output") {
         output.show(true);
     }
+}
+
+async function buildWithEmBuild(): Promise<void> {
+    const projectDir = getProjectDir();
+    if (!projectDir) {
+        return;
+    }
+    const presetName = getPresetName();
+    const outcome = await vscode.window.withProgress(
+        {
+            location: vscode.ProgressLocation.Notification,
+            title: "Building with SEGGER via emBuild",
+            cancellable: true,
+        },
+        (_progress, token) => buildSeggerOnce(projectDir, presetName, token),
+    );
+    if (!outcome.ok) {
+        void vscode.window.showErrorMessage("emBuild failed. See the 'SEGGER Toolchain' output for details.");
+        output.show(true);
+        return;
+    }
+    lastElf = outcome.elf;
+    const size = outcome.elf ? await measureSize(outcome.elf, activeSes?.size) : undefined;
+    lastSize = size?.flash;
+    if (size) {
+        await extensionContext.workspaceState.update(`lastSize.${presetName}`, size.flash);
+    }
+    if (outcome.elf) {
+        await extensionContext.workspaceState.update("lastElf", outcome.elf);
+    }
+    await refreshStatus();
+    void vscode.window.showInformationMessage(
+        `emBuild succeeded in ${outcome.seconds.toFixed(1)} s${size ? ` · ${formatBytes(size.flash)} flash` : ""}`,
+        "Flash",
+    ).then((action) => {
+        if (action === "Flash") {
+            void flashTarget();
+        }
+    });
 }
 
 async function buildWithGcc(): Promise<void> {
@@ -344,7 +429,7 @@ async function compareSizes(): Promise<void> {
         },
         async (progress, token) => {
             progress.report({ message: `Building ${seggerPreset}` });
-            const seggerBuild = await buildPreset(projectDir, seggerPreset, output, token);
+            const seggerBuild = await buildSeggerOnce(projectDir, seggerPreset, token);
             if (!seggerBuild.ok) {
                 return { error: "SEGGER build failed" };
             }
@@ -520,6 +605,7 @@ async function showInfo(): Promise<void> {
         "SEGGER Toolchain",
         `Project: ${projectDir ?? "-"}`,
         `Preset: ${getPresetName()}`,
+        `Backend: ${getBackend() === "embuild" ? "emBuild (SFL)" : "CMake + cc.exe"}`,
         `SEGGER Embedded Studio: ${installs.length ? describeSes(installs[0]) : "not found"}`,
         `Compiler: ${installs[0]?.cc ?? "-"}`,
         `cc-segger: ${installs[0]?.ccSegger ?? "-"}`,

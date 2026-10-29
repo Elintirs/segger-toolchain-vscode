@@ -296,6 +296,32 @@ async function main() {
         );
     });
 
+    await test("generate an SES project for emBuild", () => {
+        const { collectProjectInfo } = require(path.join(out, "projectInfo"));
+        const { writeEmProject } = require(path.join(out, "embuild"));
+        const info = collectProjectInfo(work);
+        assert.ok(info.sources.some((s) => s.endsWith("main.c")), "main.c not collected");
+        const file = writeEmProject({
+            projectDir: work,
+            info,
+            sesRoot: "C:\\SEGGER",
+            name: "STM32F072",
+            optimization: "balanced",
+            stackSize: 1024,
+            heapSize: 0,
+            extraDefines: ["BENCH=1"],
+            extraIncludes: [],
+        });
+        const text = fs.readFileSync(file, "utf8");
+        assert.ok(text.includes('Target="Cortex-M0"'));
+        assert.ok(text.includes('arm_architecture="v6M"'));
+        assert.ok(text.includes("FLASH1 RX 0x08000000 0x20000"));
+        assert.ok(text.includes("RAM1 RWX 0x20000000 0x4000"));
+        assert.ok(text.includes("SEGGER_Startup.S"));
+        assert.ok(text.includes("BENCH=1"));
+        assert.ok(text.includes("Level 2 balanced"));
+    });
+
     await test("generate a cortex-debug launch configuration", async () => {
         const debug = require(path.join(out, "debug"));
         const file = await debug.writeDebugConfig({

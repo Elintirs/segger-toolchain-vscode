@@ -56,17 +56,17 @@ SEGGER-компилятор не поставляется отдельно — �
 > "<SES>\bin\emLicense.exe" install "<ключ>"
 > ```
 >
-> Setup проверяет `emLicense list` и предупредит, если ключа нет.
+> Setup проверяет `emLicense list` и предупредит, если ключа нет. Без ключа можно собирать в режиме `embuild` (см. «Два режима сборки»).
 
 ## Установка
 
 ### Из готового `.vsix` (рекомендуется)
 
-1. Скачайте `segger-toolchain-0.2.0.vsix` из [Releases](https://github.com/Elintirs/segger-toolchain-vscode/releases).
+1. Скачайте `segger-toolchain-0.3.0.vsix` из [Releases](https://github.com/Elintirs/segger-toolchain-vscode/releases).
 2. Установите:
 
 ```powershell
-code --install-extension segger-toolchain-0.2.0.vsix
+code --install-extension segger-toolchain-0.3.0.vsix
 ```
 
 3. Перезапустите VS Code. В списке расширений появится **SEGGER Toolchain (SES) for CMake** (`elintirs.segger-toolchain`).
@@ -79,7 +79,7 @@ cd segger-toolchain-vscode
 npm ci
 npm run compile
 npx @vscode/vsce package
-code --install-extension segger-toolchain-0.2.0.vsix
+code --install-extension segger-toolchain-0.3.0.vsix
 ```
 
 Для разработки: откройте папку в VS Code и нажмите `F5` — запустится Extension Development Host.
@@ -109,6 +109,19 @@ code --install-extension segger-toolchain-0.2.0.vsix
 Команда создаёт `.vscode/launch.json` и берёт устройство из `segger.deviceName`
 (при Setup оно определяется по имени linker script, например `STM32F072CBTX_FLASH.ld` → `STM32F072CB`).
 Для отладки нужен `arm-none-eabi-gdb`: из PATH или `segger.gdbPath`.
+
+## Два режима сборки
+
+| Режим | Что вызывается | Нужен CLI-ключ |
+|---|---|---|
+| `cmake` (по умолчанию) | CMake + Ninja + `cc.exe` | да |
+| `embuild` | генерируется `.emProject`, запускается `emBuild.exe` | **нет** (SFL) |
+
+Переключение — настройка `segger.buildBackend` или команда **SEGGER: Build via emBuild (no CLI key)**.
+
+В режиме `embuild` расширение собирает параметры проекта (исходники, include-пути, define, регионы из `.ld`, CPU), генерирует `<project>.emProject` и вызывает `emBuild`. Результат — `Output/Debug/Exe/<project>.elf`, размер и прошивка работают как обычно.
+
+Ограничения режима: нет CMake-таргетов и их зависимостей, переносятся не все флаги, инкрементальность своя (SES). Для типового STM32-проекта этого достаточно.
 
 ## Что именно меняется в проекте
 
@@ -171,6 +184,12 @@ Generic startup от SEGGER содержит только ядровые иск�
 | `segger.gccPreset` | авто | пресет GCC для сравнения |
 | `segger.jlinkPath` | авто | путь к `JLink.exe` |
 | `segger.gdbPath` | авто | `arm-none-eabi-gdb` для cortex-debug |
+| `segger.buildBackend` | `cmake` | `cmake` (cc.exe, нужен ключ) или `embuild` (SFL) |
+| `segger.optimization` | `balanced` | оптимизация для emBuild: `none`, `balanced`, `size` |
+| `segger.extraCFlags` | — | доп. флаги C для CMake-пресета |
+| `segger.extraLinkFlags` | — | доп. флаги линковщика для CMake-пресета |
+| `segger.extraDefines` | `[]` | доп. define-ы |
+| `segger.extraIncludes` | `[]` | доп. include-пути |
 | `segger.stackSize` | `1024` | стек, байт |
 | `segger.heapSize` | `0` | куча, байт |
 | `segger.flashInterface` | `SWD` | SWD/JTAG |
@@ -237,6 +256,7 @@ python test/bench.py --clang D:\LLVM\bin\clang.exe   # если установл
 - Пресет `segger-debug` конфигурируется CMake, компилятор определяется как `SEGGERClang`.
 - Размер прошивки читается либо `size`, либо встроенным парсером ELF32; проверено на реальном ELF — совпало с `arm-none-eabi-size` до байта.
 - Замеры размеров воспроизводятся скриптом `test/bench.py` (GCC, Clang, вариант без libc).
+- **Режим `embuild` проверен на реальной SES**: сгенерированный `.emProject` собран `emBuild` из расширения, результат `text 978 B`, ELF создан.
 - Отдельной автоматизации требует только CLI-сборка через `cc.exe`: SEGGER требует установленный ключ (`emLicense install`), которого нет на машине разработки.
 
 ## Структура репозитория

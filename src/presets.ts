@@ -13,6 +13,10 @@ export interface PresetInput {
     heapSize: number;
     presetName: string;
     deviceName: string;
+    extraCFlags?: string;
+    extraLinkFlags?: string;
+    extraDefines?: string[];
+    extraIncludes?: string[];
 }
 
 export interface PresetPaths {
@@ -61,6 +65,20 @@ export function writeUserPresets(input: PresetInput): PresetPaths {
         SEGGER_TOOLCHAIN_PKG_ROOT: fwd(input.pkgRoot),
         CMAKE_EXPORT_COMPILE_COMMANDS: true,
     };
+    const cFlags = [
+        input.extraCFlags ?? "",
+        ...(input.extraDefines ?? []).map((d) => `-D${d}`),
+        ...(input.extraIncludes ?? []).map((i) => `-I"${fwd(i)}"`),
+    ]
+        .join(" ")
+        .trim();
+    if (cFlags) {
+        cacheVariables.CMAKE_C_FLAGS = cFlags;
+        cacheVariables.CMAKE_ASM_FLAGS = cFlags;
+    }
+    if (input.extraLinkFlags) {
+        cacheVariables.CMAKE_EXE_LINKER_FLAGS = input.extraLinkFlags;
+    }
     if (input.objcopy) {
         cacheVariables.ARM_OBJCOPY = fwd(input.objcopy);
     }

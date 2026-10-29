@@ -26,6 +26,10 @@ export interface ConvertOptions {
     stackSize: number;
     heapSize: number;
     presetName: string;
+    extraCFlags?: string;
+    extraLinkFlags?: string;
+    extraDefines?: string[];
+    extraIncludes?: string[];
 }
 
 export interface ConvertResult {
@@ -330,6 +334,10 @@ export async function convertProject(opts: ConvertOptions, output: vscode.Output
         heapSize: opts.heapSize,
         presetName: opts.presetName,
         deviceName: device ?? opts.deviceName,
+        extraCFlags: opts.extraCFlags,
+        extraLinkFlags: opts.extraLinkFlags,
+        extraDefines: opts.extraDefines,
+        extraIncludes: opts.extraIncludes,
     });
     await writeWorkspaceSettings(projectDir, opts.presetName);
     changes.push(`Created ${path.basename(preset.userPresetsFile)} (${opts.presetName})`);
