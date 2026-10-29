@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.2.0
+
+- Генерация `.vscode/launch.json` для отладки через cortex-debug + J-Link (`SEGGER: Generate J-Link debug configuration`).
+- Автоопределение устройства J-Link по имени linker script (`STM32F072CBTX_FLASH.ld` → `STM32F072CB`).
+- Запоминание прошлого размера прошивки и показ разницы после сборки.
+- Проверка лицензии CLI через `emLicense list` с предупреждением при Setup.
+- README: реальные замеры SEGGER/GCC/Clang, проверка линковки через `emBuild`, скрипт `test/bench.py`.
+
 ## 0.1.1
 
 - Конвертация стала «всё или ничего»: файлы пишутся только после успешной проверки структуры `CMakeLists.txt`.
