@@ -10,15 +10,18 @@ VS Code  →  CMake  →  Ninja  →  cc.exe -segger  (SEGGER Embedded Studio)
 
 ## Зачем это
 
-SEGGER Compiler даёт заметно меньший код, чем `arm-none-eabi-gcc` при тех же флагах оптимизации. В примере из этой папки мигалка для STM32F072 занимает:
+SEGGER-компилятор не поставляется отдельно — он лежит внутри Embedded Studio. Расширение даёт к нему доступ из CMake + Ninja в VS Code.
 
-| Компилятор | Flash |
+Насколько он реально меньше GCC — мы измерили на примере STM32F072 (методика и полная таблица ниже):
+
+| Конфигурация | Flash |
 |---|---|
-| SEGGER | 972 B (замер автора проекта) |
-| GCC 15.3 (SysGCC) | 1304 B |
-| GCC 14.2 (проверено здесь) | 1264 B |
+| GCC `-O2` + newlib-nano (как в исходном проекте) | 1264 B |
+| GCC `-Os -flto` + newlib-nano | 1192 B |
+| **SEGGER `-Os` + SEGGER RTL** | **978 B** |
+| GCC `-Os -flto` без libc | 940 B |
 
-Разница ~23–25 %. При этом компилятор не поставляется отдельно: он лежит внутри SEGGER Embedded Studio.
+Против GCC «из коробки» SEGGER выигрывает ~22 %, но почти вся разница — это **newlib-nano**, а не кодогенерация. В прошивке, которая не использует libc, открытый GCC с `-Os -flto` даёт даже меньше байт.
 
 **Декомпиляция не нужна.** С июля 2025 SEGGER официально поддерживает CMake: [SEGGERMicro/segger-toolchain-cmake](https://github.com/SEGGERMicro/segger-toolchain-cmake). Достаточно вызвать `bin/cc.exe -segger` и подключить их toolchain-файл. Расширение автоматизирует всё вокруг этого: поиск IDE, скачивание пакета, конвертацию GCC-проекта, пресеты, сборку, сравнение размеров и прошивку.
 
@@ -59,11 +62,11 @@ SEGGER Compiler даёт заметно меньший код, чем `arm-none-
 
 ### Из готового `.vsix` (рекомендуется)
 
-1. Скачайте `segger-toolchain-0.1.1.vsix` из [Releases](https://github.com/Elintirs/segger-toolchain-vscode/releases).
+1. Скачайте `segger-toolchain-0.2.0.vsix` из [Releases](https://github.com/Elintirs/segger-toolchain-vscode/releases).
 2. Установите:
 
 ```powershell
-code --install-extension segger-toolchain-0.1.1.vsix
+code --install-extension segger-toolchain-0.2.0.vsix
 ```
 
 3. Перезапустите VS Code. В списке расширений появится **SEGGER Toolchain (SES) for CMake** (`elintirs.segger-toolchain`).
@@ -76,7 +79,7 @@ cd segger-toolchain-vscode
 npm ci
 npm run compile
 npx @vscode/vsce package
-code --install-extension segger-toolchain-0.1.1.vsix
+code --install-extension segger-toolchain-0.2.0.vsix
 ```
 
 Для разработки: откройте папку в VS Code и нажмите `F5` — запустится Extension Development Host.
@@ -185,6 +188,37 @@ Generic startup от SEGGER содержит только ядровые иск�
 | `JLink.exe was not found` | Установите J-Link Software или задайте `segger.jlinkPath`. |
 | `Configure preset "segger-debug" not found` | Запустите **SEGGER: Setup SEGGER toolchain for this project**. |
 
+## Замеры размера
+
+Один проект, один linker script, одинаковые `-ffunction-sections -fdata-sections -Wl,--gc-sections`, замер `arm-none-eabi-size -B` (Flash = `.text` + `.data`):
+
+| Конфигурация | text | data | Flash |
+|---|---|---|---|
+| GCC 14.2 `-O2` + newlib-nano | 1256 | 8 | 1264 |
+| GCC `-Os` + newlib-nano | 1252 | 8 | 1260 |
+| GCC `-O2 -flto` + newlib-nano | 1192 | 8 | 1200 |
+| GCC `-Os -flto` + newlib-nano | 1184 | 8 | 1192 |
+| Clang 23 `-Oz` + newlib-nano | 1352 | 8 | 1360 |
+| GCC `-Os -flto`, без libc | 940 | 0 | 940 |
+| Clang 23 `-Oz`, без libc | 956 | 0 | 956 |
+| **SEGGER (`segger-cc` 20.1.3, `-Os`) + SEGGER RTL** | **978** | **0** | **978** |
+
+«Без libc» — `-nostdlib` + заглушка `__libc_init_array`: прошивка не вызывает ни одной функции libc, поэтому newlib в неё не нужен.
+
+Выводы:
+
+- SEGGER против GCC «из коробки»: 1264 − 978 = **286 B** (22 %).
+- Из этих 286 B **252 B** исчезают, если убрать newlib: GCC `-Os -flto` без libc даёт 940 B, то есть меньше SEGGER.
+- Значит, на этом проекте выигрыш SEGGER — не кодогенерация, а компактный рантайм и линковщик.
+- На проектах с `printf`/`malloc` картина будет другой: там решают SEGGER RTL или picolibc.
+
+Воспроизвести:
+
+```powershell
+python test/bench.py
+python test/bench.py --clang D:\LLVM\bin\clang.exe   # если установлен LLVM
+```
+
 ## Ограничения и честные предупреждения
 
 - **Конвертер рассчитан на типовой шаблон** STM32CubeMX/ручной CMake-проект: `set(STARTUP_FILE ...)`, `set(LINKER_SCRIPT ...)`, `target_link_options(<target> PRIVATE ...)`. Если структура другая, Setup выдаст ошибку и **ничего не запишет** (сначала всё проверяется, потом пишется). Резервная копия `CMakeLists.txt` создаётся всегда.
@@ -197,12 +231,13 @@ Generic startup от SEGGER содержит только ядровые иск�
 ## Как это проверялось
 
 - `npm run compile` — сборка без ошибок.
-- `npm test` — 16 самопроверок: активация расширения, парсинг `.ld`, определение `-mcpu`, извлечение 32 IRQ из CMSIS, генерация startup, чистка ICF, поиск фейковой установки SES, скачивание официального пакета, полная конвертация примера, сохранение GCC-ветки, валидность пресетов, «всё или ничего» при ошибке, идемпотентность.
+- `npm test` — 18 самопроверок: активация расширения, парсинг `.ld`, определение `-mcpu`, извлечение 32 IRQ из CMSIS, генерация startup, чистка ICF, поиск фейковой установки SES, скачивание официального пакета, полная конвертация примера, сохранение GCC-ветки, валидность пресетов, «всё или ничего» при ошибке, идемпотентность, генерация `launch.json`.
 - **GCC-сборка примера выполнена реально**: CMake 4.4 + Ninja + Arm GNU 14.2, результат `text 1256 + data 8 = 1264 B`, `firmware.hex` создан. После конвертации GCC-пресет собирается с тем же результатом.
-- Сконвертированный startup (`segger/SEGGER_Startup.S`) **собран реальным ассемблером** `arm-none-eabi-gcc -mcpu=cortex-m0 -mthumb`: 0 ошибок, в таблице присутствуют все 32 внешних IRQ, `Reset_Handler`, `_start`, `__stack_end__` и `__SEGGER_init_table__` (последние два разрешает линковщик SEGGER).
-- Пресет `segger-debug` **реально конфигурируется CMake**: компилятор определяется как `SEGGERClang`, подхватывается официальный toolchain-файл, и конфигурация доходит до поиска binutils в установке SES. Дальше нужна сама SES — на машине разработчика расширения её нет.
-- Размер прошивки читается либо `size`, либо встроенным парсером ELF32 (на случай, если `size.exe` нет в поставке SES). Проверено на реальном ELF: результат совпал с `arm-none-eabi-size` до байта.
-- Итоговая линковка SEGGER-линковщиком и проверка «972 B» требуют установленной SEGGER Embedded Studio; это единственный шаг, который не автоматизирован в CI.
+- **Линковка SEGGER-тулчейном проверена реально**: сгенерированные `SEGGER_Startup.S` и `SEGGER_Flash.icf` собраны `segger-cc` и слинкованы `segger-ld` через `emBuild` (SFL покрывает IDE/emBuild). Результат — `text 978 B, data 0, bss 1027` (включая стек 1024), все 32 IRQ на месте.
+- Пресет `segger-debug` конфигурируется CMake, компилятор определяется как `SEGGERClang`.
+- Размер прошивки читается либо `size`, либо встроенным парсером ELF32; проверено на реальном ELF — совпало с `arm-none-eabi-size` до байта.
+- Замеры размеров воспроизводятся скриптом `test/bench.py` (GCC, Clang, вариант без libc).
+- Отдельной автоматизации требует только CLI-сборка через `cc.exe`: SEGGER требует установленный ключ (`emLicense install`), которого нет на машине разработки.
 
 ## Структура репозитория
 
