@@ -1,0 +1,19 @@
+{
+    "configurations": [
+        {
+            "name": "STM32F072",
+            "compilerPath": "C:/SysGCC/arm_gcc/bin/arm-none-eabi-gcc.exe",
+            "intelliSenseMode": "gcc-arm",
+            "includePath": [
+                "${workspaceFolder}/**",
+                "C:/Users/OGK/files/Cortex librery/CMSIS_5-develop/CMSIS/Core/Include",
+                "C:/Users/OGK/files/Cortex librery/cmsis-device-f0-master/Include"                
+            ],
+            "defines": [
+                "STM32F072xB"
+            ],
+            "cStandard": "c11"
+        }
+    ],
+    "version": 4
+}

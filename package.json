@@ -1,0 +1,152 @@
+{
+  "name": "segger-toolchain",
+  "displayName": "SEGGER Toolchain (SES) for CMake",
+  "description": "Build STM32 (and other Cortex-M) projects in VS Code with the SEGGER compiler from SEGGER Embedded Studio, using CMake + Ninja. Includes project conversion, size comparison against GCC, and J-Link flashing.",
+  "version": "0.1.0",
+  "publisher": "local",
+  "license": "MIT",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Programming Languages",
+    "Other"
+  ],
+  "keywords": [
+    "segger",
+    "embedded studio",
+    "cmake",
+    "ninja",
+    "stm32",
+    "cortex-m",
+    "arm"
+  ],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "segger.setup",
+        "title": "Setup SEGGER toolchain for this project",
+        "category": "SEGGER"
+      },
+      {
+        "command": "segger.build",
+        "title": "Build (SEGGER)",
+        "category": "SEGGER"
+      },
+      {
+        "command": "segger.buildGcc",
+        "title": "Build GCC baseline",
+        "category": "SEGGER"
+      },
+      {
+        "command": "segger.compare",
+        "title": "Compare firmware size (SEGGER vs GCC)",
+        "category": "SEGGER"
+      },
+      {
+        "command": "segger.clean",
+        "title": "Clean build directories",
+        "category": "SEGGER"
+      },
+      {
+        "command": "segger.flash",
+        "title": "Flash with J-Link",
+        "category": "SEGGER"
+      },
+      {
+        "command": "segger.selectStudio",
+        "title": "Select SEGGER Embedded Studio installation",
+        "category": "SEGGER"
+      },
+      {
+        "command": "segger.updatePackage",
+        "title": "Update SEGGER CMake package",
+        "category": "SEGGER"
+      },
+      {
+        "command": "segger.showInfo",
+        "title": "Show toolchain info",
+        "category": "SEGGER"
+      }
+    ],
+    "configuration": {
+      "title": "SEGGER Toolchain",
+      "properties": {
+        "segger.studioPath": {
+          "type": "string",
+          "default": "",
+          "description": "Path to the SEGGER Embedded Studio installation (the folder containing bin/cc.exe). Leave empty for auto-detection."
+        },
+        "segger.cmakePackagePath": {
+          "type": "string",
+          "default": "",
+          "description": "Path to a local clone of github.com/SEGGERMicro/segger-toolchain-cmake. Leave empty to download it automatically."
+        },
+        "segger.cpu": {
+          "type": "string",
+          "default": "",
+          "description": "Target CPU (for example cortex-m0, cortex-m4). Auto-detected from the existing -mcpu flag when empty."
+        },
+        "segger.deviceName": {
+          "type": "string",
+          "default": "STM32F072CB",
+          "description": "J-Link device name used for flashing."
+        },
+        "segger.presetName": {
+          "type": "string",
+          "default": "segger-debug",
+          "description": "Name of the generated SEGGER configure preset."
+        },
+        "segger.gccPreset": {
+          "type": "string",
+          "default": "",
+          "description": "Name of the GCC configure preset used as a size baseline. Leave empty to auto-detect."
+        },
+        "segger.jlinkPath": {
+          "type": "string",
+          "default": "",
+          "description": "Path to JLink.exe. Leave empty for auto-detection."
+        },
+        "segger.stackSize": {
+          "type": "number",
+          "default": 1024,
+          "description": "Stack size in bytes passed to the SEGGER linker."
+        },
+        "segger.heapSize": {
+          "type": "number",
+          "default": 0,
+          "description": "Heap size in bytes passed to the SEGGER linker."
+        },
+        "segger.flashInterface": {
+          "type": "string",
+          "enum": [
+            "SWD",
+            "JTAG"
+          ],
+          "default": "SWD",
+          "description": "Debug interface used by J-Link."
+        },
+        "segger.flashSpeed": {
+          "type": "number",
+          "default": 4000,
+          "description": "J-Link interface speed in kHz."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "compile": "tsc -p .",
+    "watch": "tsc -w -p .",
+    "test": "node ./test/selftest.js",
+    "vscode:prepublish": "npm run compile"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "@types/vscode": "^1.85.0",
+    "typescript": "^5.4.5"
+  }
+}

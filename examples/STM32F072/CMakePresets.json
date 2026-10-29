@@ -1,0 +1,23 @@
+{
+    "version": 3,
+    "configurePresets": [
+        {
+            "name": "stm32f072",
+            "displayName": "STM32F072 - ARM GCC",
+            "generator": "Ninja",
+            "binaryDir": "${sourceDir}/build/gcc",
+            "toolchainFile": "${sourceDir}/cmake/arm-none-eabi.cmake",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Debug",
+                "STM32_DEVICE_PATH": "${sourceDir}/third_party/cmsis-device-f0",
+                "CMSIS_CORE_PATH": "${sourceDir}/third_party/CMSIS_5/CMSIS/Core/Include"
+            }
+        }
+    ],
+    "buildPresets": [
+        {
+            "name": "stm32f072",
+            "configurePreset": "stm32f072"
+        }
+    ]
+}

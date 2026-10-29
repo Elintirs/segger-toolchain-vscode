@@ -1,0 +1,7 @@
+node_modules/
+out/
+*.vsix
+.vscode-test/
+.cache-test/
+examples/**/build*/
+examples/**/.segger/backup/
