@@ -151,8 +151,28 @@ function stripDuplicateMacros(thumbStartup: string): string {
     return thumbStartup.replace(/^\.macro\s+END_FUNC\b[\s\S]*?^\.endm[ \t]*$/gm, "");
 }
 
-/** CMake platform module files that teach CMake the SEGGER flags for this CPU. */
-export function platformModules(flags: CpuFlags): Array<{ relativePath: string; content: string }> {
+/**
+ * The upstream SEGGER_Flash.icf reserves 16 bytes at 0x400 for NXP Kinetis
+ * security settings. That is meaningless for an STM32 whose flash starts at
+ * 0x08000000, so drop that block unless flash really starts at address 0.
+ */
+export function prepareIcf(template: string, flashOrigin: number): string {
+    if (flashOrigin === 0) {
+        return template;
+    }
+    let text = template;
+    text = text.replace(
+        /\/\/[^\n]*emPower board:[^\n]*\r?\n[ \t]*define region FLASH = FLASH1 - \[from 0x400 size 16\];\r?\n?/i,
+        "define region FLASH = FLASH1;\n",
+    );
+    text = text.replace(
+        /define block config\.key[\s\S]*?place at 0x400 with fixed order \{[\s\S]*?\};\r?\n?/,
+        "",
+    );
+    return text;
+}
+
+/** CMake platform module files that teach CMake the SEGGER flags for this CPU. */export function platformModules(flags: CpuFlags): Array<{ relativePath: string; content: string }> {
     const extra = [flags.fpu ? `-mfpu=${flags.fpu}` : "", flags.floatAbi ? `-mfloat-abi=${flags.floatAbi}` : ""]
         .filter(Boolean)
         .join("\n  ");

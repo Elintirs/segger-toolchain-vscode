@@ -91,8 +91,24 @@ async function main() {
         assert.ok(irqs.every((n) => /^[A-Za-z_]\w*$/.test(n)), "invalid handler name");
     });
 
-    await test("parse size output", () => {
-        const s = size.parseSizeOutput("   text\t   data\t    bss\t    dec\t    hex\tfilename\n   972\t      4\t     16\t    992\t    3e0\tfirmware.elf\n");
+    await test("prepareIcf drops the NXP-only 0x400 block for STM32", () => {
+        const tpl = [
+            "// For emPower board: exclude the range 0x400 to 0x410.",
+            "define region FLASH = FLASH1 - [from 0x400 size 16];",
+            "define region RAM = RAM1;",
+            "define block config.key with size = 8, fill = 0xFF { symbol BackDoorKey };",
+            "place at 0x400 with fixed order { block config.key };",
+            "place in FLASH { readonly };",
+        ].join("\n");
+        const stm32 = devices.prepareIcf(tpl, 0x08000000);
+        assert.ok(!stm32.includes("0x400"), "0x400 block was not removed");
+        assert.ok(stm32.includes("define region FLASH = FLASH1;"));
+        assert.ok(stm32.includes("place in FLASH"));
+        const kinetis = devices.prepareIcf(tpl, 0);
+        assert.ok(kinetis.includes("place at 0x400"), "NXP config must be kept for flash at 0");
+    });
+
+    await test("parse size output", () => {        const s = size.parseSizeOutput("   text\t   data\t    bss\t    dec\t    hex\tfilename\n   972\t      4\t     16\t    992\t    3e0\tfirmware.elf\n");
         assert.strictEqual(s.text, 972);
         assert.strictEqual(s.data, 4);
         assert.strictEqual(s.flash, 976);
@@ -205,6 +221,44 @@ async function main() {
         assert.ok(text.includes("ISR_HANDLER RTC_IRQHandler"));
         assert.ok(text.includes("External interrupt vectors"));
         assert.ok(text.includes("_start"));
+    });
+
+    await test("generated ICF has no emPower leftovers", () => {
+        const icf = fs.readFileSync(path.join(work, "segger", "SEGGER_Flash.icf"), "utf8");
+        assert.ok(!icf.includes("0x400"), "NXP-specific placement still present");
+        assert.ok(icf.includes("define region FLASH = FLASH1;"));
+        assert.ok(icf.includes("place at start of FLASH"));
+    });
+
+    await test("conversion is all-or-nothing", async () => {
+        const bad = path.join(tmp, "badproj");
+        fs.mkdirSync(bad, { recursive: true });
+        const cm = fs
+            .readFileSync(path.join(example, "CMakeLists.txt"), "utf8")
+            .replace(/target_link_options\([\s\S]*?\n\)/, "");
+        fs.writeFileSync(path.join(bad, "CMakeLists.txt"), cm);
+        fs.cpSync(path.join(example, "linker"), path.join(bad, "linker"), { recursive: true });
+        let threw = false;
+        try {
+            await project.convertProject(
+                {
+                    projectDir: bad,
+                    ses: install,
+                    pkg,
+                    cpu: "",
+                    deviceName: "STM32F072CB",
+                    stackSize: 1024,
+                    heapSize: 0,
+                    presetName: "segger-debug",
+                },
+                channel,
+            );
+        } catch {
+            threw = true;
+        }
+        assert.ok(threw, "expected the conversion to fail");
+        assert.ok(!fs.existsSync(path.join(bad, "segger")), "partial files were written before validation failed");
+        assert.strictEqual(fs.readFileSync(path.join(bad, "CMakeLists.txt"), "utf8"), cm, "CMakeLists was modified");
     });
 
     await test("conversion is idempotent", async () => {

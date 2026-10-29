@@ -9,6 +9,7 @@ import {
     MemoryRegion,
     parseMemoryRegions,
     platformModules,
+    prepareIcf,
 } from "./devices";
 import { findGccPreset, PresetPaths, writeUserPresets, writeWorkspaceSettings } from "./presets";
 import { SesInstall } from "./ses";
@@ -193,25 +194,15 @@ export async function convertProject(opts: ConvertOptions, output: vscode.Output
         );
     }
 
-    // --- write SEGGER support files -----------------------------------------
+    // --- prepare SEGGER support files (written only after all checks pass) ---
     const seggerDir = path.join(projectDir, "segger");
+    const flashRegion = regions.find((r) => /FLASH/i.test(r.name)) ?? regions[0];
     const startupText = buildSeggerStartup(
         fs.readFileSync(opts.pkg.startupTemplate, "utf8"),
         fs.readFileSync(opts.pkg.thumbStartupTemplate, "utf8"),
         irqHandlers,
     );
-    await writeFileEnsured(path.join(seggerDir, "SEGGER_Startup.S"), startupText);
-    await writeFileEnsured(path.join(seggerDir, "SEGGER_Flash.icf"), fs.readFileSync(opts.pkg.icfTemplate, "utf8"));
-    changes.push(`Created segger/SEGGER_Startup.S (${irqHandlers.length} IRQs, ${cpu})`);
-    changes.push("Created segger/SEGGER_Flash.icf");
-
-    const vendor = await vendorPackageIntoProject(opts.pkg, projectDir);
-    changes.push(`Vendored SEGGER CMake package into ${path.relative(projectDir, vendor.destDir)}`);
-
-    for (const module of platformModules({ cpu, fpu: flags?.fpu, floatAbi: flags?.floatAbi })) {
-        await writeFileEnsured(path.join(projectDir, module.relativePath), module.content);
-    }
-    changes.push(`Generated CMake platform modules for ${sysProc}`);
+    const icfText = prepareIcf(fs.readFileSync(opts.pkg.icfTemplate, "utf8"), flashRegion.origin);
 
     // --- patch CMakeLists.txt -----------------------------------------------
     let text = original;
@@ -294,6 +285,20 @@ export async function convertProject(opts: ConvertOptions, output: vscode.Output
             /find_program\(\s*ARM_SIZE\s+arm-none-eabi-size\s+REQUIRED\s*\)/i,
             "find_program(ARM_SIZE NAMES arm-none-eabi-size size)",
         );
+
+    // --- everything validated: write the generated files ---------------------
+    await writeFileEnsured(path.join(seggerDir, "SEGGER_Startup.S"), startupText);
+    await writeFileEnsured(path.join(seggerDir, "SEGGER_Flash.icf"), icfText);
+    changes.push(`Created segger/SEGGER_Startup.S (${irqHandlers.length} IRQs, ${cpu})`);
+    changes.push("Created segger/SEGGER_Flash.icf");
+
+    const vendor = await vendorPackageIntoProject(opts.pkg, projectDir);
+    changes.push(`Vendored SEGGER CMake package into ${path.relative(projectDir, vendor.destDir)}`);
+
+    for (const module of platformModules({ cpu, fpu: flags?.fpu, floatAbi: flags?.floatAbi })) {
+        await writeFileEnsured(path.join(projectDir, module.relativePath), module.content);
+    }
+    changes.push(`Generated CMake platform modules for ${sysProc}`);
 
     const eol = original.includes("\r\n") ? "\r\n" : "\n";
     text = text.replace(/\r?\n/g, eol);

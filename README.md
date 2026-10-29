@@ -49,11 +49,11 @@ SEGGER Compiler даёт заметно меньший код, чем `arm-none-
 
 ### Из готового `.vsix` (рекомендуется)
 
-1. Скачайте `segger-toolchain-0.1.0.vsix` из [Releases](https://github.com/Elintirs/segger-toolchain-vscode/releases).
+1. Скачайте `segger-toolchain-0.1.1.vsix` из [Releases](https://github.com/Elintirs/segger-toolchain-vscode/releases).
 2. Установите:
 
 ```powershell
-code --install-extension segger-toolchain-0.1.0.vsix
+code --install-extension segger-toolchain-0.1.1.vsix
 ```
 
 3. Перезапустите VS Code. В списке расширений появится **SEGGER Toolchain (SES) for CMake** (`elintirs.segger-toolchain`).
@@ -66,7 +66,7 @@ cd segger-toolchain-vscode
 npm ci
 npm run compile
 npx @vscode/vsce package
-code --install-extension segger-toolchain-0.1.0.vsix
+code --install-extension segger-toolchain-0.1.1.vsix
 ```
 
 Для разработки: откройте папку в VS Code и нажмите `F5` — запустится Extension Development Host.
@@ -129,6 +129,9 @@ Generic startup от SEGGER содержит только ядровые иск�
 -Wl,--add-region:RAM1=0x4000@0x20000000
 ```
 
+Из шаблона `SEGGER_Flash.icf` при этом удаляется NXP-специфичный блок `place at 0x400`
+(он нужен только для Kinetis, где флеш начинается с нуля).
+
 Размеры стека/кучи настраиваются: `segger.stackSize`, `segger.heapSize`.
 
 ## Настройки
@@ -149,6 +152,17 @@ Generic startup от SEGGER содержит только ядровые иск�
 | `segger.flashInterface` | `SWD` | SWD/JTAG |
 | `segger.flashSpeed` | `4000` | кГц |
 
+## Если что-то пошло не так
+
+| Симптом | Причина и что делать |
+|---|---|
+| `No binutils found ... /gcc/` | В установке SES нет каталога `gcc/arm-*`. Проверьте `segger.studioPath`, он должен указывать на папку с `bin/cc.exe`. |
+| `undefined symbol __stack_end__` | Другая версия SEGGER Linker. Добавьте в пресет `-DCMAKE_EXE_LINKER_FLAGS=-Wl,--defsym=__stack_end__=<адрес конца RAM>`. |
+| В логе видно `--specs=nano.specs` | Сборка идёт по GCC-ветке: не запускался Setup или проект не был сконвертирован. |
+| `--add-region` не распознан | Линковщик не SEGGER. Убедитесь, что в пресете указан `cmake/segger/segger-toolchain.cmake`, а не GCC toolchain. |
+| `JLink.exe was not found` | Установите J-Link Software или задайте `segger.jlinkPath`. |
+| `Configure preset "segger-debug" not found` | Запустите **SEGGER: Setup SEGGER toolchain for this project**. |
+
 ## Ограничения и честные предупреждения
 
 - **Конвертер рассчитан на типовой шаблон** STM32CubeMX/ручной CMake-проект: `set(STARTUP_FILE ...)`, `set(LINKER_SCRIPT ...)`, `target_link_options(<target> PRIVATE ...)`. Если структура другая, Setup выдаст ошибку и **ничего не запишет** (сначала всё проверяется, потом пишется). Резервная копия `CMakeLists.txt` создаётся всегда.
@@ -161,7 +175,7 @@ Generic startup от SEGGER содержит только ядровые иск�
 ## Как это проверялось
 
 - `npm run compile` — сборка без ошибок.
-- `npm test` — 13 самопроверок: активация расширения, парсинг `.ld`, определение `-mcpu`, извлечение 32 IRQ из CMSIS, генерация startup, поиск фейковой установки SES, скачивание официального пакета, полная конвертация примера, сохранение GCC-ветки, валидность пресетов, идемпотентность.
+- `npm test` — 16 самопроверок: активация расширения, парсинг `.ld`, определение `-mcpu`, извлечение 32 IRQ из CMSIS, генерация startup, чистка ICF, поиск фейковой установки SES, скачивание официального пакета, полная конвертация примера, сохранение GCC-ветки, валидность пресетов, «всё или ничего» при ошибке, идемпотентность.
 - **GCC-сборка примера выполнена реально**: CMake 4.4 + Ninja + Arm GNU 14.2, результат `text 1256 + data 8 = 1264 B`, `firmware.hex` создан. После конвертации GCC-пресет собирается с тем же результатом.
 - Сконвертированный startup (`segger/SEGGER_Startup.S`) **собран реальным ассемблером** `arm-none-eabi-gcc -mcpu=cortex-m0 -mthumb`: 0 ошибок, в таблице присутствуют все 32 внешних IRQ, `Reset_Handler`, `_start`, `__stack_end__` и `__SEGGER_init_table__` (последние два разрешает линковщик SEGGER).
 - Пресет `segger-debug` **реально конфигурируется CMake**: компилятор определяется как `SEGGERClang`, подхватывается официальный toolchain-файл, и конфигурация доходит до поиска binutils в установке SES. Дальше нужна сама SES — на машине разработчика расширения её нет.
