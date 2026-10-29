@@ -33,19 +33,6 @@ SEGGER Compiler даёт заметно меньший код, чем `arm-none-
 - **Прошивает через J-Link** (`JLink.exe -CommanderScript`).
 - Показывает размер прошивки в статус-баре.
 
-## Интерфейс
-
-Все команды собраны в палитре под общим префиксом `SEGGER`:
-
-![Палитра команд](docs/screenshots/command-palette.png)
-
-Настройки — путь к Embedded Studio, CPU, устройство J-Link, размеры стека и кучи, пресеты:
-
-![Настройки расширения](docs/screenshots/settings.png)
-
-Размер прошивки после сборки показывается в статус-баре, а команда
-**SEGGER: Compare firmware size** открывает панель сравнения SEGGER и GCC.
-
 ## Требования
 
 | Компонент | Версия | Примечание |
@@ -93,6 +80,13 @@ code --install-extension segger-toolchain-0.1.0.vsix
 5. **SEGGER: Compare firmware size (SEGGER vs GCC)** — таблица с разницей.
 6. **SEGGER: Flash with J-Link** — прошивка.
 
+Все команды собраны в палитре под общим префиксом `SEGGER`:
+
+![Палитра команд](docs/screenshots/command-palette.png)
+
+После сборки размер прошивки показывается в статус-баре, а сравнение с GCC
+открывается отдельной панелью.
+
 ## Что именно меняется в проекте
 
 Команда Setup создаёт:
@@ -138,6 +132,8 @@ Generic startup от SEGGER содержит только ядровые иск�
 Размеры стека/кучи настраиваются: `segger.stackSize`, `segger.heapSize`.
 
 ## Настройки
+
+![Настройки расширения](docs/screenshots/settings.png)
 
 | Настройка | По умолчанию | Описание |
 |---|---|---|
