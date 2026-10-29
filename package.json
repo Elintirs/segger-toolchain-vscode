@@ -2,7 +2,7 @@
   "name": "segger-toolchain",
   "displayName": "SEGGER Toolchain (SES) for CMake",
   "description": "Build STM32 (and other Cortex-M) projects in VS Code with the SEGGER compiler from SEGGER Embedded Studio, using CMake + Ninja. Includes project conversion, size comparison against GCC, and J-Link flashing.",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "publisher": "elintirs",
   "license": "MIT",
   "icon": "media/icon.png",
@@ -53,6 +53,11 @@
       {
         "command": "segger.build",
         "title": "Build (SEGGER)",
+        "category": "SEGGER"
+      },
+      {
+        "command": "segger.buildEm",
+        "title": "Build via emBuild (no CLI key)",
         "category": "SEGGER"
       },
       {
@@ -138,6 +143,40 @@
           "type": "string",
           "default": "",
           "description": "Path to the GDB used by cortex-debug (arm-none-eabi-gdb). Leave empty to use PATH or the SEGGER toolchain."
+        },
+        "segger.buildBackend": {
+          "type": "string",
+          "enum": ["cmake", "embuild"],
+          "default": "cmake",
+          "description": "How to invoke the SEGGER compiler: 'cmake' uses cc.exe (requires a CLI license), 'embuild' generates an SES project and runs emBuild (works under the free non-commercial license)."
+        },
+        "segger.optimization": {
+          "type": "string",
+          "enum": ["none", "balanced", "size"],
+          "default": "balanced",
+          "description": "Optimization level for the emBuild backend."
+        },
+        "segger.extraCFlags": {
+          "type": "string",
+          "default": "",
+          "description": "Extra C flags, added to the generated CMake preset."
+        },
+        "segger.extraLinkFlags": {
+          "type": "string",
+          "default": "",
+          "description": "Extra linker flags, added to the generated CMake preset."
+        },
+        "segger.extraDefines": {
+          "type": "array",
+          "items": { "type": "string" },
+          "default": [],
+          "description": "Extra preprocessor defines (without -D)."
+        },
+        "segger.extraIncludes": {
+          "type": "array",
+          "items": { "type": "string" },
+          "default": [],
+          "description": "Extra include directories."
         },
         "segger.stackSize": {
           "type": "number",

@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.3.0
+
+- Режим сборки через `emBuild` (`segger.buildBackend: embuild`): генерируется `.emProject`, ключ CLI не нужен (SFL).
+- Команда **SEGGER: Build via emBuild (no CLI key)**.
+- Новые параметры: `segger.optimization`, `segger.extraCFlags`, `segger.extraLinkFlags`, `segger.extraDefines`, `segger.extraIncludes`.
+- README: раздел «Два режима сборки».
+
 ## 0.2.0
 
 - Генерация `.vscode/launch.json` для отладки через cortex-debug + J-Link (`SEGGER: Generate J-Link debug configuration`).
